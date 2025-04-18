@@ -27,7 +27,9 @@ libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19" % Test
 // https://mvnrepository.com/artifact/org.log4s/log4s
 libraryDependencies += "org.log4s" %% "log4s" % "1.10.0"
 // https://mvnrepository.com/artifact/org.slf4j/slf4j-simple
-libraryDependencies += "org.slf4j" % "slf4j-simple" % "2.0.13"
+// libraryDependencies += "org.slf4j" % "slf4j-simple" % "2.0.13"
+// https://mvnrepository.com/artifact/ch.qos.logback/logback-classic
+libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.1.3"
 // https://mvnrepository.com/artifact/commons-io/commons-io
 libraryDependencies += "commons-io" % "commons-io" % "2.16.1"
 // https://mvnrepository.com/artifact/org.scalaz/scalaz-core

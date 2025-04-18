@@ -589,6 +589,112 @@ class Isabelle(val setup: SetupGeneral) extends FutureValue {
     }
   }
 
+  /** List of ATP processes to monitor and kill */
+  private val atps = List("vampire", "eprover", "spass", "z3", "cvc4", "verit")
+
+  /** Maximum number of attempts to kill ATP processes */
+  private val maxAttempts = 64
+
+  /** Checks if any ATP process is currently running as a child of Isabelle */
+  private def isATPProcessRunning(): Boolean = {
+    if (process == null) return false
+    val isabellePid = process.pid()
+    atps.exists { atp =>
+      try {
+        // 查找 Isabelle 进程的子进程中的 ATP 进程
+        val process = Runtime.getRuntime.exec(s"pgrep -P $isabellePid -f $atp")
+        val reader = new java.io.BufferedReader(new java.io.InputStreamReader(process.getInputStream))
+        val hasProcess = reader.readLine() != null
+        process.waitFor()
+        hasProcess
+      } catch {
+        case e: Exception => 
+          println(s"Error checking for $atp processes: ${e.getMessage}")
+          false
+      }
+    }
+  }
+
+  /** Kills all ATP processes that are children of the Isabelle process */
+  private def killATPProcesses(atp: String): Unit = {
+    if (process == null) return
+    val isabellePid = process.pid()
+    println(s"Processing $atp processes...")
+    try {
+      // 查找 Isabelle 进程的子进程中的 ATP 进程
+      val findProcess = Runtime.getRuntime.exec(s"pgrep -P $isabellePid -f $atp")
+      val reader = new java.io.BufferedReader(new java.io.InputStreamReader(findProcess.getInputStream))
+      var pid = reader.readLine()
+      while (pid != null) {
+        pid = pid.trim
+        if (pid.nonEmpty) {
+          println(s"Terminating $atp process: $pid")
+          
+          // 首先尝试使用 SIGTERM (15) 正常终止进程
+          Runtime.getRuntime.exec(s"kill $pid").waitFor()
+          
+          // 等待一小段时间让进程有机会正常退出
+          Thread.sleep(500)
+          
+          // 检查进程是否还存在
+          val checkProcess = Runtime.getRuntime.exec(s"ps -p $pid > /dev/null 2>&1")
+          if (checkProcess.waitFor() == 0) {
+            // 如果进程还存在，使用 SIGKILL (9) 强制终止
+            println(s"Process $pid did not terminate, forcing kill")
+            Runtime.getRuntime.exec(s"kill -9 $pid").waitFor()
+          }
+        }
+        pid = reader.readLine()
+      }
+      findProcess.waitFor()
+    } catch {
+      case e: Exception => 
+        println(s"Error killing $atp processes: ${e.getMessage}")
+    }
+  }
+
+  /** Kills only ATP (Automated Theorem Prover) related child processes.
+   * This is useful when you want to terminate ATP processes without affecting other Isabelle processes.
+   */
+  def killAtps(): Unit = {
+    if (process != null) {
+      try {
+        val pid = process.pid()
+        println(s"Isabelle process PID: $pid")
+        if (pid > 0) {
+          if (SystemUtils.IS_OS_WINDOWS) {
+            throw new UnsupportedOperationException("Windows system is not supported for killAtps")
+          } else {
+            var attempt = 1
+
+            while (attempt <= maxAttempts) {
+              println(s"Cleanup attempt $attempt of $maxAttempts")
+
+              // Kill all ATP processes that are children of Isabelle
+              atps.foreach(killATPProcesses)
+
+              // Wait for processes to terminate
+              Thread.sleep(2000)
+
+              // Check if any ATP processes are still running
+              if (!isATPProcessRunning()) {
+                println("No ATP processes found running")
+                return
+              }
+
+              attempt += 1
+            }
+
+            println(s"Warning: Some ATP processes may still be running after $maxAttempts attempts")
+          }
+        }
+      } catch {
+        case e: Exception =>
+          println(s"Failed to kill ATP processes: ${e.getMessage}")
+      }
+    }
+  }
+
   /** Throws an [[IsabelleDestroyedException]] if this Isabelle process has been destroyed.
    * Otherwise does nothing. */
   @throws[IsabelleDestroyedException]("if the process was destroyed")
